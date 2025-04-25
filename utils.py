@@ -89,8 +89,10 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
     SLIDE_WIDTH = 10
     SLIDE_HEIGHT = 7.5
     MARGIN = 0.5
-    TITLE_HEIGHT = 1.0
-    MIN_PADDING = 1.0
+    TITLE_HEIGHT = 0.8
+    TITLE_TOP = MARGIN
+    IMAGE_HEIGHT = 3.5
+    BULLET_SPACING = 0.25
     
     for i, slide_data in enumerate(slides):
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -105,12 +107,12 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
             fill.solid()
             fill.fore_color.rgb = theme
 
-        # Title placement with consistent margins
+        # Title placement - always at the top
         title_text = slide_data['title']
         title_text = re.sub(r"^Slide\s*\d+[:\-\.]?\s*", "", title_text)
         title_box = slide.shapes.add_textbox(
             Inches(MARGIN), 
-            Inches(MARGIN),
+            Inches(TITLE_TOP),
             Inches(SLIDE_WIDTH - 2*MARGIN), 
             Inches(TITLE_HEIGHT)
         )
@@ -118,90 +120,83 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
         title_frame.text = title_text
         title_frame.paragraphs[0].font.size = Pt(32)
         title_frame.paragraphs[0].font.bold = True
+        title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
         
-        # Calculate content height based on number of bullet points
-        # Estimate 0.4 inches per bullet point plus padding
-        content_height = len(slide_data['bullets']) * 0.4 + 0.3
-        total_content_height = TITLE_HEIGHT + content_height + MARGIN
+        # Calculate content area
+        content_top = TITLE_TOP + TITLE_HEIGHT
+        content_height = SLIDE_HEIGHT - content_top - MARGIN
         
-        # Determine layout based on content height
-        if total_content_height > SLIDE_HEIGHT * 0.5:
-            # Vertical layout (text above, image below)
-            text_width = SLIDE_WIDTH - 2*MARGIN
-            text_left = MARGIN
-            text_top = TITLE_HEIGHT + MARGIN
-            
-            # Center image below text
-            image_width = min(5.0, SLIDE_WIDTH - 4*MARGIN)  # Max 5 inches wide
-            image_height = min(3.0, SLIDE_HEIGHT - total_content_height - 2*MARGIN)
-            image_left = (SLIDE_WIDTH - image_width) / 2
-            image_top = text_top + content_height + MARGIN
-        else:
-            # Horizontal layout (text left, image right)
-            text_width = (SLIDE_WIDTH - 3*MARGIN) * 0.5  # Use half width for text
-            text_left = MARGIN
-            text_top = TITLE_HEIGHT + MARGIN
-            
-            # Place image to the right with padding
-            image_width = SLIDE_WIDTH - text_width - 3*MARGIN
-            image_height = 4.0  # Fixed height for horizontal layout
-            image_left = text_width + 2*MARGIN
-            image_top = text_top
-        
-        # Add bullet points
-        bullet_box = slide.shapes.add_textbox(
-            Inches(text_left),
-            Inches(text_top),
-            Inches(text_width),
-            Inches(content_height)
-        )
-        bullet_frame = bullet_box.text_frame
-        bullet_frame.word_wrap = True
-        
-        for bullet in slide_data['bullets']:
-            p = bullet_frame.add_paragraph()
-            p.text = bullet
-            p.font.size = Pt(20)
-            p.level = 0
-            p.space_after = Pt(12)  # Add spacing between bullets
-        
-        # Add image with calculated dimensions
+        # Image placement - centered below title
+        image_top = content_top + 0.2  # Small gap after title
         if images and len(images) > i and images[i]:
             try:
+                # Calculate image dimensions maintaining aspect ratio
                 img_shape = slide.shapes.add_picture(
                     images[i],
-                    Inches(image_left),
+                    Inches(MARGIN),
                     Inches(image_top),
-                    Inches(image_width),
-                    Inches(image_height)
+                    Inches(SLIDE_WIDTH - 2*MARGIN),
+                    Inches(IMAGE_HEIGHT)
                 )
                 
                 # Maintain aspect ratio
                 aspect_ratio = img_shape.height / img_shape.width
-                new_width = min(image_width, image_height / aspect_ratio)
+                new_width = min(SLIDE_WIDTH - 2*MARGIN, IMAGE_HEIGHT / aspect_ratio)
                 new_height = new_width * aspect_ratio
                 
-                # Recenter image in its allocated space
-                x_offset = (image_width - new_width) / 2
-                img_shape.left = Inches(image_left + x_offset)
+                # Center image horizontally
+                x_offset = (SLIDE_WIDTH - new_width) / 2
+                img_shape.left = Inches(x_offset)
                 img_shape.width = Inches(new_width)
                 img_shape.height = Inches(new_height)
                 
+                actual_image_height = new_height
             except Exception as e:
                 logging.error(f"Failed to add image to slide '{title_text}': {e}")
+                actual_image_height = 0
+        else:
+            actual_image_height = 0
         
-        # Watermark for free users (at bottom of slide)
+        # Bullet points placement - below image
+        bullets_top = image_top + actual_image_height + 0.3
+        remaining_height = SLIDE_HEIGHT - bullets_top - MARGIN
+        bullet_height = remaining_height / (len(slide_data['bullets']) + 1)  # +1 for spacing
+        
+        bullet_box = slide.shapes.add_textbox(
+            Inches(MARGIN),
+            Inches(bullets_top),
+            Inches(SLIDE_WIDTH - 2*MARGIN),
+            Inches(remaining_height)
+        )
+        bullet_frame = bullet_box.text_frame
+        bullet_frame.word_wrap = True
+        
+        for idx, bullet in enumerate(slide_data['bullets']):
+            p = bullet_frame.add_paragraph()
+            p.text = bullet
+            p.font.size = Pt(20)
+            p.level = 0
+            p.space_before = Pt(6)
+            p.space_after = Pt(6)
+            
+            # Adjust alignment based on number of bullets
+            if len(slide_data['bullets']) <= 3:
+                p.alignment = PP_ALIGN.CENTER
+            else:
+                p.alignment = PP_ALIGN.LEFT
+        
+        # Watermark for free users (at bottom right corner)
         if user_tier == 'free':
             watermark_box = slide.shapes.add_textbox(
-                Inches(MARGIN),
-                Inches(SLIDE_HEIGHT - 0.7),
-                Inches(SLIDE_WIDTH - 2*MARGIN),
-                Inches(0.4)
+                Inches(SLIDE_WIDTH - 3),
+                Inches(SLIDE_HEIGHT - 0.4),
+                Inches(2.5),
+                Inches(0.3)
             )
             watermark_frame = watermark_box.text_frame
             watermark_frame.text = "Generated by Decklyst (Free)"
-            watermark_frame.paragraphs[0].font.size = Pt(14)
+            watermark_frame.paragraphs[0].font.size = Pt(11)
             watermark_frame.paragraphs[0].font.color.rgb = RGBColor(180, 180, 180)
-            watermark_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+            watermark_frame.paragraphs[0].alignment = PP_ALIGN.RIGHT
     
     prs.save(output_path)
