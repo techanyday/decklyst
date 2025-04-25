@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ appname }} Preview</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-5">
+    <h2 class="mb-4">Presentation Preview</h2>
+    {% if watermark %}
+    <div class="alert alert-info">This is a free preview. Watermark will appear on slides.</div>
+    {% endif %}
+    <div class="row">
+        {% for slide, img in slide_img_pairs %}
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <img src="/{{ img }}" class="card-img-top" style="max-height: 200px; object-fit: cover;" alt="Slide image">
+                <div class="card-body">
+                    <h5 class="card-title">{{ slide.title }}</h5>
+                    <ul>
+                        {% for bullet in slide.bullets %}
+                        <li>{{ bullet }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if pptx_filename %}
+    <a href="/static/presentations/{{ pptx_filename }}" class="btn btn-success">Download PPTX</a>
+    {% else %}
+    <div class="alert alert-warning mt-3">No downloadable file available. (This is normal for free users.)</div>
+    {% endif %}
+    <a href="/" class="btn btn-secondary mt-3">Back to Home</a>
+</div>
+</body>
+</html>

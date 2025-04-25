@@ -1,0 +1,7 @@
+Flask
+python-pptx
+openai
+requests
+python-dotenv
+gunicorn
+werkzeug

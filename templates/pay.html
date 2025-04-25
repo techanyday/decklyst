@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upgrade to Pro</title>
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+<div class="container py-5">
+    <div class="card mx-auto" style="max-width: 500px;">
+        <div class="card-body">
+            <h2 class="text-center mb-4">Choose Your Plan</h2>
+            
+            <!-- Pay per presentation -->
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h3>Pay Per Presentation</h3>
+                    <p class="mb-2">Generate one presentation with full features</p>
+                    <ul class="list-unstyled mb-3">
+                        <li>✓ Up to 30 slides</li>
+                        <li>✓ No watermark</li>
+                        <li>✓ Full export options</li>
+                    </ul>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="h4 mb-0">$0.99</div>
+                        <button onclick="initializePayment('single')" class="btn btn-primary">Buy Now</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monthly subscription -->
+            <div class="card">
+                <div class="card-body">
+                    <h3>Monthly Pro</h3>
+                    <p class="mb-2">Unlimited presentations with all features</p>
+                    <ul class="list-unstyled mb-3">
+                        <li>✓ Unlimited presentations</li>
+                        <li>✓ Up to 30 slides each</li>
+                        <li>✓ No watermark</li>
+                        <li>✓ Priority support</li>
+                    </ul>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="h4 mb-0">$4.99/month</div>
+                        <button onclick="initializePayment('subscription')" class="btn btn-success">Subscribe</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function initializePayment(type) {
+        const config = {
+            single: {
+                amount: 99, // $0.99 in cents
+                plan: null
+            },
+            subscription: {
+                amount: 499, // $4.99 in cents
+                plan: '{{ monthly_plan_code }}'
+            }
+        };
+
+        const handler = PaystackPop.setup({
+            key: '{{ paystack_public_key }}',
+            email: '{{ user_email }}',
+            amount: config[type].amount * 100,
+            currency: 'USD',
+            plan: config[type].plan,
+            ref: '' + Math.floor((Math.random() * 1000000000) + 1),
+            callback: function(response) {
+                window.location.href = '/payment/verify?reference=' + response.reference + '&type=' + type;
+            },
+            onClose: function() {
+                console.log('Payment window closed');
+            }
+        });
+        handler.openIframe();
+    }
+</script>
+</body>
+</html>
