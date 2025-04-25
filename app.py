@@ -17,13 +17,13 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev')
 
-# Email configuration
-app.config['MAIL_SERVER'] = 'smtp.bluehost.com'  # Bluehost SMTP server
-app.config['MAIL_PORT'] = 465  # Use 465 for SSL
-app.config['MAIL_USE_TLS'] = False  # Disable TLS since we're using SSL
-app.config['MAIL_USE_SSL'] = True  # Enable SSL
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')  # Your full Bluehost email address
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')  # Your Bluehost email password
+# Email configuration for Render deployment
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Gmail is more reliable on Render
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')  # Use App Password for Gmail
 app.config['MAIL_DEFAULT_SENDER'] = ('decklyst', os.getenv('MAIL_USERNAME'))
 app.config['MAIL_MAX_EMAILS'] = 10
 app.config['MAIL_ASCII_ATTACHMENTS'] = False
@@ -56,46 +56,47 @@ def before_request():
         g.user = session['user_email']
 
 def send_verification_email(email, token):
-    verify_url = url_for('verify_email_route', token=token, _external=True)
-    
-    # HTML version of the email
-    html_content = f'''
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .button {{ 
-                display: inline-block;
-                padding: 10px 20px;
-                background-color: #007bff;
-                color: white;
-                text-decoration: none;
-                border-radius: 5px;
-                margin: 20px 0;
-            }}
-            .footer {{ font-size: 12px; color: #666; margin-top: 30px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>Welcome to decklyst!</h2>
-            <p>Thank you for signing up. Please verify your email address to get started.</p>
-            <a href="{verify_url}" class="button">Verify Email Address</a>
-            <p>Or copy and paste this link in your browser:</p>
-            <p>{verify_url}</p>
-            <div class="footer">
-                <p>This link will expire in 24 hours.</p>
-                <p>If you did not create an account, please ignore this email.</p>
-                <p> 2025 decklyst. All rights reserved.</p>
+    try:
+        verify_url = url_for('verify_email_route', token=token, _external=True)
+        
+        # HTML version of the email
+        html_content = f'''
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .button {{ 
+                    display: inline-block;
+                    padding: 10px 20px;
+                    background-color: #007bff;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                }}
+                .footer {{ font-size: 12px; color: #666; margin-top: 30px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>Welcome to decklyst!</h2>
+                <p>Thank you for signing up. Please verify your email address to get started.</p>
+                <a href="{verify_url}" class="button">Verify Email Address</a>
+                <p>Or copy and paste this link in your browser:</p>
+                <p>{verify_url}</p>
+                <div class="footer">
+                    <p>This link will expire in 24 hours.</p>
+                    <p>If you did not create an account, please ignore this email.</p>
+                    <p> 2025 decklyst. All rights reserved.</p>
+                </div>
             </div>
-        </div>
-    </body>
-    </html>
-    '''
-    
-    # Plain text version of the email
-    text_content = f'''Welcome to decklyst!
+        </body>
+        </html>
+        '''
+        
+        # Plain text version of the email
+        text_content = f'''Welcome to decklyst!
 
 Thank you for signing up. Please verify your email address to get started.
 
@@ -108,27 +109,32 @@ If you did not create an account, please ignore this email.
 
  2025 decklyst'''
 
-    msg = Message(
-        subject='Welcome to decklyst - Verify your email',
-        sender=('decklyst', app.config['MAIL_USERNAME']),
-        recipients=[email]
-    )
-    msg.body = text_content
-    msg.html = html_content
-    
-    # Add headers to improve deliverability
-    msg.extra_headers = {
-        'List-Unsubscribe': f'<mailto:{app.config["MAIL_USERNAME"]}?subject=unsubscribe>',
-        'Precedence': 'bulk',
-        'X-Auto-Response-Suppress': 'OOF, AutoReply',
-        'Auto-Submitted': 'auto-generated'
-    }
-    
-    try:
+        msg = Message(
+            subject='Welcome to decklyst - Verify your email',
+            sender=('decklyst', app.config['MAIL_USERNAME']),
+            recipients=[email]
+        )
+        msg.body = text_content
+        msg.html = html_content
+        
+        # Add headers to improve deliverability
+        msg.extra_headers = {
+            'List-Unsubscribe': f'<mailto:{app.config["MAIL_USERNAME"]}?subject=unsubscribe>',
+            'Precedence': 'bulk',
+            'X-Auto-Response-Suppress': 'OOF, AutoReply',
+            'Auto-Submitted': 'auto-generated'
+        }
+        
         mail.send(msg)
+        logger.info(f'Verification email sent successfully to {email}')
+        return True
     except Exception as e:
-        logging.error(f"Failed to send verification email: {str(e)}")
-        raise
+        error_msg = str(e)
+        logger.error(f'Failed to send verification email: {error_msg}')
+        # Log additional connection details for debugging
+        logger.error(f'SMTP Settings: Server={app.config["MAIL_SERVER"]}, Port={app.config["MAIL_PORT"]}, '
+                    f'TLS={app.config["MAIL_USE_TLS"]}, SSL={app.config["MAIL_USE_SSL"]}')
+        return False
 
 @app.route('/verify/<token>')
 def verify_email_route(token):
@@ -150,7 +156,9 @@ def register():
             
         try:
             verification_token = add_user(email, password)
-            send_verification_email(email, verification_token)
+            if not send_verification_email(email, verification_token):
+                flash('Failed to send verification email. Please try again later.', 'error')
+                return render_template('register.html')
             flash('Registration successful! Please check your email to verify your account.', 'success')
             return redirect(url_for('login'))
         except Exception as e:
