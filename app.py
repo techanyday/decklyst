@@ -1,21 +1,13 @@
-from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, g, jsonify
-from flask_mail import Mail, Message
-from utils import generate_slides_content, generate_slide_images, create_pptx
-from models import get_db, init_db, add_user, get_user_by_email, set_user_pro, is_user_pro, create_user, get_payment_by_reference, update_payment_status
 import os
-from datetime import datetime
-from dotenv import load_dotenv
-import requests
-from werkzeug.security import check_password_hash, generate_password_hash
-import logging
-import hmac
-import hashlib
-import json
-from functools import wraps
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from werkzeug.security import generate_password_hash, check_password_hash
+from models import init_db, create_user, get_user_by_email, is_user_pro, set_user_pro
 from flask_dance.contrib.google import make_google_blueprint, google
-from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
+import logging
 
-load_dotenv()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev')
@@ -28,114 +20,57 @@ google_bp = make_google_blueprint(
     client_id=app.config['GOOGLE_OAUTH_CLIENT_ID'],
     client_secret=app.config['GOOGLE_OAUTH_CLIENT_SECRET'],
     scope=['profile', 'email'],
-    redirect_url='/login/google/authorized',  # Match the URI in Google Console
+    redirect_url='/login/google/authorized',
     reprompt_consent=True
 )
 app.register_blueprint(google_bp, url_prefix='/login')
 
-# Email configuration for Bluehost
-app.config['MAIL_SERVER'] = 'mail.decklyst.com'  # Your Bluehost domain's mail server
-app.config['MAIL_PORT'] = 465  # SSL port
-app.config['MAIL_USE_TLS'] = False
-app.config['MAIL_USE_SSL'] = True
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')  # full email e.g. noreply@decklyst.com
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')  # Bluehost email password
-app.config['MAIL_DEFAULT_SENDER'] = ('decklyst', os.getenv('MAIL_USERNAME'))
-app.config['MAIL_MAX_EMAILS'] = 10
-app.config['MAIL_ASCII_ATTACHMENTS'] = False
-app.config['MAIL_SUPPRESS_SEND'] = False
-app.config['MAIL_DEBUG'] = True
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger('flask.app')
-
-mail = Mail(app)
-
-# Ensure presentations directory exists
-os.makedirs('static/presentations', exist_ok=True)
-
-# Initialize database on startup
+# Initialize database
 with app.app_context():
     init_db()
 
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
-
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not google.authorized:
-            return redirect(url_for('google.login'))
-        try:
-            resp = google.get('/oauth2/v2/userinfo')
-            assert resp.ok, resp.text
-        except (TokenExpiredError, AssertionError) as e:
-            logger.error(f"OAuth error: {str(e)}")
-            return redirect(url_for('google.login'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-@app.before_request
-def before_request():
-    g.user = None
-    if google.authorized:
-        try:
-            resp = google.get('/oauth2/v2/userinfo')
-            if resp.ok:
-                user_info = resp.json()
-                email = user_info['email']
-                g.user = email
-                
-                # Create user if they don't exist
-                if not get_user_by_email(email):
-                    create_user(
-                        email=email,
-                        password=generate_password_hash('not-used'),  # Password not used with OAuth
-                        verified=True  # Auto-verified through Google
-                    )
-        except Exception as e:
-            logger.error(f"Error getting user info: {str(e)}")
+@app.route('/')
+def index():
+    if not google.authorized:
+        return redirect(url_for('google.login'))
+    try:
+        resp = google.get('/oauth2/v2/userinfo')
+        assert resp.ok, resp.text
+        email = resp.json()['email']
+        session['user_email'] = email
+        user = get_user_by_email(email)
+        if not user:
+            create_user(email, '')  # Password not needed for OAuth
+        return redirect(url_for('dashboard'))
+    except Exception as e:
+        logger.error(f"Error in OAuth flow: {str(e)}")
+        flash('Authentication failed. Please try again.', 'error')
+        return redirect(url_for('login'))
 
 @app.route('/login')
 def login():
-    if not google.authorized:
-        return redirect(url_for('google.login'))
-    return redirect(url_for('dashboard'))
+    if google.authorized:
+        return redirect(url_for('index'))
+    return render_template('login.html')
 
 @app.route('/logout')
 def logout():
-    session.clear()
-    return redirect(url_for('index'))
-
-@app.route('/')
-def index():
-    user_tier = 'free'
-    if g.user:
-        user = get_user_by_email(g.user)
-        if user:
-            user_tier = user['tier']
-    return render_template('index.html', appname='decklyst', user_tier=user_tier)
+    session.pop('user_email', None)
+    return redirect(url_for('login'))
 
 @app.route('/dashboard')
-@login_required
 def dashboard():
-    email = g.user
+    email = session.get('user_email')
+    if not email:
+        return redirect(url_for('login'))
     is_pro = is_user_pro(email)
     return render_template('dashboard.html', email=email, is_pro=is_pro)
 
 @app.route('/pay')
-@login_required
 def pay():
     try:
         return render_template('pay.html',
-            user_email=g.user,
+            user_email=session.get('user_email'),
             public_key=os.getenv('PAYSTACK_PUBLIC_KEY'),
             monthly_plan=os.getenv('PAYSTACK_MONTHLY_PLAN')
         )
@@ -162,10 +97,10 @@ def payment_verify():
         data = response.json()
         
         if data['status'] and data['data']['status'] == 'success':
-            if g.user:
+            if session.get('user_email'):
                 if payment_type == 'subscription':
                     # For monthly subscription
-                    set_user_pro(g.user, subscription=True)
+                    set_user_pro(session.get('user_email'), subscription=True)
                     session['subscription'] = True
                     return redirect(url_for('index', status='success', 
                         message='Welcome to Pro! You now have unlimited access.'))
@@ -267,7 +202,7 @@ def paystack_webhook():
 
 @app.route('/payment/status/<reference>')
 def check_payment_status(reference):
-    if not g.user:
+    if not session.get('user_email'):
         return jsonify({'error': 'Unauthorized'}), 401
         
     payment = get_payment_by_reference(reference)
