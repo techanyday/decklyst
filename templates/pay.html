@@ -23,15 +23,36 @@
             margin-top: 10px;
             align-items: center;
             justify-content: center;
+            flex-wrap: wrap;
         }
-        .payment-icons img {
-            height: 48px;
-            width: 48px;
-            object-fit: contain;
+        .payment-brand {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
             transition: transform 0.2s;
+            min-width: 120px;
+            text-align: center;
+            color: white;
+            text-decoration: none;
+            cursor: pointer;
         }
-        .payment-icons img:hover {
-            transform: scale(1.1);
+        .payment-brand:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .brand-mtn {
+            background-color: #FFC107;
+            color: black;
+        }
+        .brand-vodafone {
+            background-color: #E60000;
+        }
+        .brand-airteltigo {
+            background-color: #FF7F00;
+        }
+        .brand-card {
+            background-color: #2196F3;
         }
         .card {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -95,10 +116,10 @@
             <div class="payment-method">
                 <h5 class="text-center mb-3">Accepted Payment Methods</h5>
                 <div class="payment-icons">
-                    <img src="{{ url_for('static', filename='images/payment-methods/mtn.svg') }}" alt="MTN Mobile Money" title="MTN Mobile Money">
-                    <img src="{{ url_for('static', filename='images/payment-methods/vodafone.svg') }}" alt="Vodafone Cash" title="Vodafone Cash">
-                    <img src="{{ url_for('static', filename='images/payment-methods/airteltigo.svg') }}" alt="AirtelTigo Money" title="AirtelTigo Money">
-                    <img src="{{ url_for('static', filename='images/payment-methods/card.svg') }}" alt="Card Payments" title="Card Payments">
+                    <span class="payment-brand brand-mtn">MTN Mobile Money</span>
+                    <span class="payment-brand brand-vodafone">Vodafone Cash</span>
+                    <span class="payment-brand brand-airteltigo">AirtelTigo Money</span>
+                    <span class="payment-brand brand-card">Card Payment</span>
                 </div>
             </div>
         </div>
