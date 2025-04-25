@@ -23,7 +23,7 @@ app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = ('SlideForge', os.getenv('MAIL_USERNAME'))
+app.config['MAIL_DEFAULT_SENDER'] = ('Decklyst', os.getenv('MAIL_USERNAME'))
 app.config['MAIL_MAX_EMAILS'] = 10
 app.config['MAIL_ASCII_ATTACHMENTS'] = False
 app.config['MAIL_SUPPRESS_SEND'] = False
@@ -78,7 +78,7 @@ def send_verification_email(email, token):
     </head>
     <body>
         <div class="container">
-            <h2>Welcome to SlideForge!</h2>
+            <h2>Welcome to Decklyst!</h2>
             <p>Thank you for signing up. Please verify your email address to get started.</p>
             <a href="{verify_url}" class="button">Verify Email Address</a>
             <p>Or copy and paste this link in your browser:</p>
@@ -86,7 +86,7 @@ def send_verification_email(email, token):
             <div class="footer">
                 <p>This link will expire in 24 hours.</p>
                 <p>If you did not create an account, please ignore this email.</p>
-                <p> 2025 SlideForge. All rights reserved.</p>
+                <p> 2025 Decklyst. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -94,7 +94,7 @@ def send_verification_email(email, token):
     '''
     
     # Plain text version of the email
-    text_content = f'''Welcome to SlideForge!
+    text_content = f'''Welcome to Decklyst!
 
 Thank you for signing up. Please verify your email address to get started.
 
@@ -105,11 +105,11 @@ This link will expire in 24 hours.
 
 If you did not create an account, please ignore this email.
 
- 2025 SlideForge'''
+ 2025 Decklyst'''
 
     msg = Message(
-        subject='Welcome to SlideForge - Verify your email',
-        sender=('SlideForge', app.config['MAIL_USERNAME']),
+        subject='Welcome to Decklyst - Verify your email',
+        sender=('Decklyst', app.config['MAIL_USERNAME']),
         recipients=[email]
     )
     msg.body = text_content
