@@ -23,7 +23,15 @@ app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_DEFAULT_SENDER'] = ('SlideForge', os.getenv('MAIL_USERNAME'))
+app.config['MAIL_MAX_EMAILS'] = 10
+app.config['MAIL_ASCII_ATTACHMENTS'] = False
+app.config['MAIL_SUPPRESS_SEND'] = False
+app.config['MAIL_DEBUG'] = True
+
+# Configure logging for email issues
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('flask.app')
 
 mail = Mail(app)
 
@@ -48,16 +56,78 @@ def before_request():
 
 def send_verification_email(email, token):
     verify_url = url_for('verify_email_route', token=token, _external=True)
-    msg = Message('Verify your email',
-                 recipients=[email])
-    msg.body = f'''Please click the link below to verify your email address:
+    
+    # HTML version of the email
+    html_content = f'''
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .button {{ 
+                display: inline-block;
+                padding: 10px 20px;
+                background-color: #007bff;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                margin: 20px 0;
+            }}
+            .footer {{ font-size: 12px; color: #666; margin-top: 30px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>Welcome to SlideForge!</h2>
+            <p>Thank you for signing up. Please verify your email address to get started.</p>
+            <a href="{verify_url}" class="button">Verify Email Address</a>
+            <p>Or copy and paste this link in your browser:</p>
+            <p>{verify_url}</p>
+            <div class="footer">
+                <p>This link will expire in 24 hours.</p>
+                <p>If you did not create an account, please ignore this email.</p>
+                <p> 2025 SlideForge. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    
+    # Plain text version of the email
+    text_content = f'''Welcome to SlideForge!
+
+Thank you for signing up. Please verify your email address to get started.
+
+Please click the link below or copy it into your browser:
 {verify_url}
 
 This link will expire in 24 hours.
 
 If you did not create an account, please ignore this email.
-'''
-    mail.send(msg)
+
+ 2025 SlideForge'''
+
+    msg = Message(
+        subject='Welcome to SlideForge - Verify your email',
+        sender=('SlideForge', app.config['MAIL_USERNAME']),
+        recipients=[email]
+    )
+    msg.body = text_content
+    msg.html = html_content
+    
+    # Add headers to improve deliverability
+    msg.extra_headers = {
+        'List-Unsubscribe': f'<mailto:{app.config["MAIL_USERNAME"]}?subject=unsubscribe>',
+        'Precedence': 'bulk',
+        'X-Auto-Response-Suppress': 'OOF, AutoReply',
+        'Auto-Submitted': 'auto-generated'
+    }
+    
+    try:
+        mail.send(msg)
+    except Exception as e:
+        logging.error(f"Failed to send verification email: {str(e)}")
+        raise
 
 @app.route('/verify/<token>')
 def verify_email_route(token):
