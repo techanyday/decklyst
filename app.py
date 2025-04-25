@@ -18,6 +18,10 @@ if not app.secret_key:
 # Ensure presentations directory exists
 os.makedirs('static/presentations', exist_ok=True)
 
+# Initialize database on startup
+with app.app_context():
+    init_db()
+
 @app.before_request
 def before_request():
     g.user = None
@@ -207,5 +211,4 @@ def download_presentation(filename):
     return send_from_directory('static/presentations', filename, as_attachment=True)
 
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)
