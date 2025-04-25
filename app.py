@@ -18,11 +18,12 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev')
 
 # Email configuration
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_SERVER'] = 'smtp.bluehost.com'  # Bluehost SMTP server
+app.config['MAIL_PORT'] = 465  # Use 465 for SSL
+app.config['MAIL_USE_TLS'] = False  # Disable TLS since we're using SSL
+app.config['MAIL_USE_SSL'] = True  # Enable SSL
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')  # Your full Bluehost email address
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')  # Your Bluehost email password
 app.config['MAIL_DEFAULT_SENDER'] = ('decklyst', os.getenv('MAIL_USERNAME'))
 app.config['MAIL_MAX_EMAILS'] = 10
 app.config['MAIL_ASCII_ATTACHMENTS'] = False
