@@ -5,6 +5,28 @@
     <title>Upgrade to Pro</title>
     <script src="https://js.paystack.co/v1/inline.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .payment-method {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .payment-method img {
+            height: 24px;
+            margin-right: 10px;
+        }
+        .payment-icons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            align-items: center;
+        }
+        .payment-icons img {
+            height: 30px;
+            object-fit: contain;
+        }
+    </style>
 </head>
 <body class="bg-light">
 <div class="container py-5">
@@ -23,14 +45,14 @@
                         <li>✓ Full export options</li>
                     </ul>
                     <div class="d-flex justify-content-between align-items-center">
-                        <div class="h4 mb-0">$0.99</div>
+                        <div class="h4 mb-0">GH₵15 <small class="text-muted">($0.99)</small></div>
                         <button onclick="initializePayment('single')" class="btn btn-primary">Buy Now</button>
                     </div>
                 </div>
             </div>
 
             <!-- Monthly subscription -->
-            <div class="card">
+            <div class="card mb-3">
                 <div class="card-body">
                     <h3>Monthly Pro</h3>
                     <p class="mb-2">Unlimited presentations with all features</p>
@@ -41,9 +63,44 @@
                         <li>✓ Priority support</li>
                     </ul>
                     <div class="d-flex justify-content-between align-items-center">
-                        <div class="h4 mb-0">$4.99/month</div>
+                        <div class="h4 mb-0">GH₵60 <small class="text-muted">($3.95)</small>/month</div>
                         <button onclick="initializePayment('subscription')" class="btn btn-success">Subscribe</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- Payment methods info -->
+            <div class="payment-method">
+                <h5 class="mb-2">Accepted Payment Methods</h5>
+                <div class="payment-icons">
+                    <img src="https://cdn.paystack.com/images/payment-methods/mtn.png" alt="MTN Mobile Money" title="MTN Mobile Money">
+                    <img src="https://cdn.paystack.com/images/payment-methods/vodafone.png" alt="Vodafone Cash" title="Vodafone Cash">
+                    <img src="https://cdn.paystack.com/images/payment-methods/tigo.png" alt="AirtelTigo Money" title="AirtelTigo Money">
+                    <img src="https://cdn.paystack.com/images/payment-methods/card.png" alt="Card Payments" title="Card Payments">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pending payment modal -->
+<div class="modal fade" id="pendingPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Payment Processing</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-3">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <p>Your mobile money payment is being processed. Please check your phone for the payment prompt.</p>
+                <p>Do not close this window. The page will automatically update when your payment is confirmed.</p>
+                <div id="paymentStatus" class="alert alert-info">
+                    Waiting for payment confirmation...
                 </div>
             </div>
         </div>
@@ -54,11 +111,11 @@
     function initializePayment(type) {
         const config = {
             single: {
-                amount: 99, // $0.99 in cents
+                amount: 1500, // GH₵15 in pesewas
                 plan: null
             },
             subscription: {
-                amount: 499, // $4.99 in cents
+                amount: 6000, // GH₵60 in pesewas
                 plan: '{{ monthly_plan_code }}'
             }
         };
@@ -66,18 +123,89 @@
         const handler = PaystackPop.setup({
             key: '{{ paystack_public_key }}',
             email: '{{ user_email }}',
-            amount: config[type].amount * 100,
-            currency: 'USD',
+            amount: config[type].amount,
+            currency: 'GHS',
             plan: config[type].plan,
+            channels: ['card', 'mobile_money', 'bank'],
+            payment_options: true,
+            metadata: {
+                payment_type: type
+            },
             ref: '' + Math.floor((Math.random() * 1000000000) + 1),
             callback: function(response) {
-                window.location.href = '/payment/verify?reference=' + response.reference + '&type=' + type;
+                if (response.channel === 'mobile_money') {
+                    showPendingPaymentModal(response.reference);
+                } else {
+                    window.location.href = '/payment/verify?reference=' + response.reference + '&type=' + type;
+                }
             },
             onClose: function() {
                 console.log('Payment window closed');
             }
         });
         handler.openIframe();
+    }
+
+    function showPendingPaymentModal(reference) {
+        const modal = new bootstrap.Modal(document.getElementById('pendingPaymentModal'));
+        modal.show();
+        
+        // Start polling for payment status
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/payment/status/${reference}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    clearInterval(pollInterval);
+                    document.getElementById('paymentStatus').className = 'alert alert-success';
+                    document.getElementById('paymentStatus').textContent = 'Payment successful! Redirecting...';
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else if (data.status === 'failed' || data.status === 'transfer_failed') {
+                    clearInterval(pollInterval);
+                    document.getElementById('paymentStatus').className = 'alert alert-danger';
+                    document.getElementById('paymentStatus').textContent = 'Payment failed. Please try again.';
+                }
+            } catch (error) {
+                console.error('Error checking payment status:', error);
+            }
+        }, 5000); // Check every 5 seconds
+        
+        // Stop polling after 5 minutes
+        setTimeout(() => {
+            clearInterval(pollInterval);
+            document.getElementById('paymentStatus').className = 'alert alert-warning';
+            document.getElementById('paymentStatus').textContent = 'Payment status check timed out. If you completed the payment, it will be processed automatically.';
+        }, 300000);
+    }
+</script>
+
+<!-- Toast notifications -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="paymentToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto" id="toastTitle">Payment Status</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toastMessage"></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Check for payment status in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get('status');
+    const message = urlParams.get('message');
+    
+    if (status && message) {
+        const toast = new bootstrap.Toast(document.getElementById('paymentToast'));
+        document.getElementById('toastTitle').textContent = status === 'success' ? 'Success!' : 'Error';
+        document.getElementById('toastMessage').textContent = message;
+        document.getElementById('paymentToast').classList.add(status === 'success' ? 'bg-success' : 'bg-danger');
+        toast.show();
     }
 </script>
 </body>

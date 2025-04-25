@@ -1,13 +1,16 @@
-from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, g
+from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, g, jsonify
 from flask_mail import Mail, Message
 from utils import generate_slides_content, generate_slide_images, create_pptx
-from models import get_db, init_db, add_user, get_user_by_email, set_user_pro, is_user_pro, verify_email, is_email_verified
+from models import get_db, init_db, add_user, get_user_by_email, set_user_pro, is_user_pro, verify_email, is_email_verified, get_payment_by_reference, update_payment_status
 import os
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
 from werkzeug.security import check_password_hash
 import logging
+import hmac
+import hashlib
+import json
 
 load_dotenv()
 
@@ -181,8 +184,7 @@ def payment_verify():
     payment_type = request.args.get('type')
     
     if not ref:
-        flash('No payment reference provided.', 'danger')
-        return redirect(url_for('pay'))
+        return redirect(url_for('pay', status='error', message='No payment reference provided.'))
         
     headers = {
         'Authorization': f'Bearer {os.getenv("PAYSTACK_SECRET_KEY")}',
@@ -199,22 +201,25 @@ def payment_verify():
                     # For monthly subscription
                     set_user_pro(g.user, subscription=True)
                     session['subscription'] = True
-                    flash('Welcome to Pro! You now have unlimited access.', 'success')
+                    return redirect(url_for('index', status='success', 
+                        message='Welcome to Pro! You now have unlimited access.'))
                 else:
                     # For single presentation
                     session['single_presentation_credits'] = session.get('single_presentation_credits', 0) + 1
-                    flash('Payment successful! You can now generate one premium presentation.', 'success')
+                    return redirect(url_for('index', status='success', 
+                        message='Payment successful! You can now generate one premium presentation.'))
                 
                 session['paid_user'] = True
-            return redirect(url_for('index'))
+            return redirect(url_for('index', status='success', 
+                message='Payment successful but user session expired. Please log in again.'))
         else:
-            flash('Payment verification failed.', 'danger')
-            return redirect(url_for('pay'))
+            return redirect(url_for('pay', status='error', 
+                message='Payment verification failed. Please try again or contact support.'))
             
     except Exception as e:
         logging.error(f"Payment verification error: {str(e)}")
-        flash('An error occurred during payment verification.', 'danger')
-        return redirect(url_for('pay'))
+        return redirect(url_for('pay', status='error', 
+            message='An error occurred during payment verification. Please try again.'))
 
 @app.route('/webhook/paystack', methods=['POST'])
 def paystack_webhook():
@@ -222,33 +227,92 @@ def paystack_webhook():
     signature = request.headers.get('x-paystack-signature')
     if not signature:
         return '', 400
-        
-    # Get the request body
-    payload = request.get_json()
+
+    # Get the request body as bytes and compute the hash
+    payload = request.get_data()
+    hash_value = hmac.new(
+        os.getenv('PAYSTACK_SECRET_KEY').encode('utf-8'),
+        payload,
+        hashlib.sha512
+    ).hexdigest()
     
-    # Handle different event types
-    event = payload.get('event')
-    if event == 'charge.success':
-        data = payload['data']
-        email = data['customer']['email']
-        metadata = data.get('metadata', {})
-        payment_type = metadata.get('payment_type')
+    # Compare signatures
+    if hash_value != signature:
+        return '', 400
+
+    # Parse the payload
+    event_data = request.get_json()
+    
+    # Get the event type
+    event = event_data.get('event')
+    
+    # Get the payment data
+    data = event_data.get('data', {})
+    reference = data.get('reference')
+    
+    if not reference:
+        return '', 400
         
-        if payment_type == 'subscription':
-            set_user_pro(email, subscription=True)
-        else:
-            # Add single presentation credit
-            with app.app_context():
-                user = get_user_by_email(email)
-                if user:
-                    credits = user.get('presentation_credits', 0)
-                    user['presentation_credits'] = credits + 1
-                    
-    elif event == 'subscription.disable':
-        email = payload['data']['customer']['email']
-        set_user_pro(email, subscription=False)
+    # Get existing payment record
+    payment = get_payment_by_reference(reference)
+    if not payment:
+        return '', 404
+
+    if event == 'charge.success':
+        # Extract payment details
+        channel = data.get('channel')  # card, mobile_money, bank, etc.
+        mobile_number = None
+        if channel == 'mobile_money':
+            authorization = data.get('authorization', {})
+            mobile_number = authorization.get('receiver_bank_account_number')
+            
+        # Update payment status
+        update_payment_status(
+            reference=reference,
+            status='success',
+            transaction_data=json.dumps(data)
+        )
+        
+        # Send SMS notification for mobile money payments
+        if channel == 'mobile_money' and mobile_number:
+            try:
+                # You would integrate with an SMS service here
+                # For example, using Twilio or a local SMS gateway
+                message = f"Your payment of GH₵{data.get('amount')/100:.2f} for Decklyst has been confirmed. Thank you!"
+                logging.info(f"Would send SMS to {mobile_number}: {message}")
+            except Exception as e:
+                logging.error(f"Failed to send SMS: {str(e)}")
+                
+    elif event == 'charge.failed':
+        update_payment_status(
+            reference=reference,
+            status='failed',
+            transaction_data=json.dumps(data)
+        )
+        
+    elif event == 'transfer.failed':
+        update_payment_status(
+            reference=reference,
+            status='transfer_failed',
+            transaction_data=json.dumps(data)
+        )
         
     return '', 200
+
+@app.route('/payment/status/<reference>')
+def check_payment_status(reference):
+    if not g.user:
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    payment = get_payment_by_reference(reference)
+    if not payment:
+        return jsonify({'error': 'Payment not found'}), 404
+        
+    return jsonify({
+        'status': payment['status'],
+        'channel': payment['channel'],
+        'amount': payment['amount']
+    })
 
 @app.route('/static/presentations/<filename>')
 def download_presentation(filename):

@@ -42,6 +42,9 @@ def init_db():
             payment_type TEXT NOT NULL,
             reference TEXT UNIQUE NOT NULL,
             status TEXT NOT NULL,
+            channel TEXT,
+            mobile_number TEXT,
+            transaction_data TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
@@ -182,3 +185,65 @@ def cancel_subscription(email):
         WHERE email=?
     ''', (email,))
     db.commit()
+
+def create_payment(user_id, amount, payment_type, reference, status, channel=None, mobile_number=None):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        INSERT INTO payments (
+            user_id, 
+            amount, 
+            payment_type, 
+            reference, 
+            status, 
+            channel,
+            mobile_number
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, amount, payment_type, reference, status, channel, mobile_number))
+    db.commit()
+
+def update_payment_status(reference, status, transaction_data=None):
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Update payment status
+    cursor.execute('''
+        UPDATE payments 
+        SET status = ?,
+            transaction_data = ?
+        WHERE reference = ?
+    ''', (status, transaction_data, reference))
+    
+    # If payment is successful, update user benefits
+    if status == 'success':
+        cursor.execute('SELECT user_id, payment_type FROM payments WHERE reference = ?', (reference,))
+        payment = cursor.fetchone()
+        if payment:
+            if payment['payment_type'] == 'subscription':
+                cursor.execute('''
+                    UPDATE users 
+                    SET is_pro = 1,
+                        subscription_active = 1,
+                        subscription_end_date = datetime('now', '+30 days')
+                    WHERE id = ?
+                ''', (payment['user_id'],))
+            else:
+                cursor.execute('''
+                    UPDATE users 
+                    SET single_credits = single_credits + 1
+                    WHERE id = ?
+                ''', (payment['user_id'],))
+    
+    db.commit()
+    return True
+
+def get_payment_by_reference(reference):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        SELECT p.*, u.email 
+        FROM payments p
+        JOIN users u ON p.user_id = u.id
+        WHERE p.reference = ?
+    ''', (reference,))
+    return cursor.fetchone()
