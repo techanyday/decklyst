@@ -3,7 +3,7 @@ import openai
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.shapes import MSO_SHAPE, MSO_AUTO_SIZE
 from pptx.enum.text import PP_ALIGN
 from dotenv import load_dotenv
 import requests
@@ -178,20 +178,31 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
         )
         bullet_frame = bullet_box.text_frame
         bullet_frame.word_wrap = True
+        bullet_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
         
-        # Dynamically adjust font size based on number of bullets
-        bullet_font_size = 20 if num_bullets <= 5 else max(16, int(20 - (num_bullets - 5)))
+        # Dynamically adjust font size based on content length and number of bullets
+        total_text_length = sum(len(bullet) for bullet in slide_data['bullets'])
+        avg_text_length = total_text_length / len(slide_data['bullets'])
+        
+        if avg_text_length > 100:
+            base_font_size = 16
+        elif avg_text_length > 50:
+            base_font_size = 18
+        else:
+            base_font_size = 20
+            
+        bullet_font_size = min(base_font_size, 20 if num_bullets <= 4 else max(14, int(20 - (num_bullets - 4))))
         
         for idx, bullet in enumerate(slide_data['bullets']):
             p = bullet_frame.add_paragraph()
             p.text = bullet
             p.font.size = Pt(bullet_font_size)
             p.level = 0
-            p.space_before = Pt(4)  # Reduced spacing
-            p.space_after = Pt(4)   # Reduced spacing
+            p.space_before = Pt(4)
+            p.space_after = Pt(4)
             
-            # Adjust alignment based on number of bullets
-            if len(slide_data['bullets']) <= 3:
+            # Adjust alignment based on number of bullets and text length
+            if len(slide_data['bullets']) <= 3 and avg_text_length < 50:
                 p.alignment = PP_ALIGN.CENTER
             else:
                 p.alignment = PP_ALIGN.LEFT
