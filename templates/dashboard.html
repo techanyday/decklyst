@@ -2,19 +2,105 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>User Dashboard</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SlideForge Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+            padding-top: 2rem;
+        }
+        .presentation-form {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        .loading-spinner {
+            display: none;
+        }
+        .btn-generate {
+            min-width: 150px;
+        }
+        .feature-table {
+            margin-top: 2rem;
+        }
+        .nav-pills {
+            margin-bottom: 2rem;
+        }
+    </style>
 </head>
-<body class="bg-light">
-<div class="container py-5">
-    <div class="card mx-auto" style="max-width: 500px;">
-        <div class="card-body">
-            <h2 class="mb-4">Dashboard</h2>
-            <p><strong>Email:</strong> {{ email }}</p>
-            <p><strong>Status:</strong> {% if is_pro %}<span class="badge bg-success">Pro User</span>{% else %}<span class="badge bg-secondary">Free User</span>{% endif %}</p>
-            <a href="/logout" class="btn btn-outline-danger">Logout</a>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-white fixed-top shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="/">SlideForge</a>
+            <div class="d-flex align-items-center">
+                <span class="me-3">{{ email }}</span>
+                {% if is_pro %}
+                    <span class="badge bg-success me-3">Pro</span>
+                {% else %}
+                    <span class="badge bg-secondary me-3">Free</span>
+                {% endif %}
+                <a href="/logout" class="btn btn-outline-danger btn-sm">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-8 mx-auto">
+                <div class="presentation-form">
+                    <h2 class="text-center mb-4">Create Your Presentation</h2>
+                    
+                    <form id="presentationForm" action="/generate" method="POST">
+                        <div class="mb-3">
+                            <label for="topic" class="form-label">Topic</label>
+                            <input type="text" class="form-control" id="topic" name="topic" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="slides" class="form-label">Number of Slides</label>
+                            <input type="number" class="form-control" id="slides" name="slides" min="1" max="20" value="5" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="theme" class="form-label">Color Theme</label>
+                            <select class="form-select" id="theme" name="theme">
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                                <option value="colorful">Colorful</option>
+                            </select>
+                        </div>
+
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-primary btn-generate">
+                                <span class="spinner-border spinner-border-sm loading-spinner" role="status" aria-hidden="true"></span>
+                                Generate Presentation
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                {% if not is_pro %}
+                <div class="card mt-4">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Upgrade to Pro</h5>
+                        <p class="card-text">Get access to premium features and remove watermarks!</p>
+                        <a href="/pay" class="btn btn-success">Upgrade Now</a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
         </div>
     </div>
-</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('presentationForm').addEventListener('submit', function() {
+            document.querySelector('.loading-spinner').style.display = 'inline-block';
+            document.querySelector('.btn-generate').disabled = true;
+        });
+    </script>
 </body>
 </html>

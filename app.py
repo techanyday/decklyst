@@ -12,10 +12,14 @@ import json
 from flask_session import Session
 from flask import jsonify
 from flask import send_from_directory
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import current_user
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+db = SQLAlchemy()
 
 def create_app():
     app = Flask(__name__)
@@ -33,11 +37,16 @@ def create_app():
         GOOGLE_OAUTH_CLIENT_SECRET=os.getenv('GOOGLE_OAUTH_CLIENT_SECRET'),
         OAUTHLIB_INSECURE_TRANSPORT=os.getenv('FLASK_ENV') != 'production',
         OAUTHLIB_RELAX_TOKEN_SCOPE=True,
-        OAUTHLIB_PRESERVE_CSRF_TOKEN=True
+        OAUTHLIB_PRESERVE_CSRF_TOKEN=True,
+        SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', 'sqlite:///app.db'),
+        SQLALCHEMY_TRACK_MODIFICATIONS=False
     )
 
     # Initialize Flask-Session
     Session(app)
+
+    # Initialize Flask-SQLAlchemy
+    db.init_app(app)
 
     # Create and register Google OAuth blueprint
     blueprint = make_google_blueprint(
@@ -48,14 +57,19 @@ def create_app():
             'https://www.googleapis.com/auth/userinfo.email',
             'https://www.googleapis.com/auth/userinfo.profile'
         ],
-        redirect_url='/login/google/authorized'
+        redirect_to='index',
+        redirect_url=None,
+        login_url='/login/google',
+        authorized_url='/login/google/authorized',
+        storage=db.session,
+        user=current_user
     )
     app.register_blueprint(blueprint, url_prefix='/login')
 
     @app.route('/')
     def index():
         if not google.authorized:
-            return redirect(url_for('login'))
+            return redirect(url_for('google.login'))
         try:
             resp = google.get('/oauth2/v2/userinfo')
             assert resp.ok, resp.text
@@ -68,7 +82,7 @@ def create_app():
         except Exception as e:
             logger.error(f"Error in OAuth flow: {str(e)}")
             flash('Authentication failed. Please try again.', 'error')
-            return redirect(url_for('login'))
+            return redirect(url_for('google.login'))
 
     @app.route('/login')
     def login():
@@ -277,6 +291,7 @@ def create_app():
 def init_application():
     app = create_app()
     with app.app_context():
+        db.create_all()
         init_db()
     return app
 
