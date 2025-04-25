@@ -23,7 +23,7 @@ app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = ('Decklyst', os.getenv('MAIL_USERNAME'))
+app.config['MAIL_DEFAULT_SENDER'] = ('decklyst', os.getenv('MAIL_USERNAME'))
 app.config['MAIL_MAX_EMAILS'] = 10
 app.config['MAIL_ASCII_ATTACHMENTS'] = False
 app.config['MAIL_SUPPRESS_SEND'] = False
@@ -78,7 +78,7 @@ def send_verification_email(email, token):
     </head>
     <body>
         <div class="container">
-            <h2>Welcome to Decklyst!</h2>
+            <h2>Welcome to decklyst!</h2>
             <p>Thank you for signing up. Please verify your email address to get started.</p>
             <a href="{verify_url}" class="button">Verify Email Address</a>
             <p>Or copy and paste this link in your browser:</p>
@@ -86,7 +86,7 @@ def send_verification_email(email, token):
             <div class="footer">
                 <p>This link will expire in 24 hours.</p>
                 <p>If you did not create an account, please ignore this email.</p>
-                <p> 2025 Decklyst. All rights reserved.</p>
+                <p> 2025 decklyst. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -94,7 +94,7 @@ def send_verification_email(email, token):
     '''
     
     # Plain text version of the email
-    text_content = f'''Welcome to Decklyst!
+    text_content = f'''Welcome to decklyst!
 
 Thank you for signing up. Please verify your email address to get started.
 
@@ -105,11 +105,11 @@ This link will expire in 24 hours.
 
 If you did not create an account, please ignore this email.
 
- 2025 Decklyst'''
+ 2025 decklyst'''
 
     msg = Message(
-        subject='Welcome to Decklyst - Verify your email',
-        sender=('Decklyst', app.config['MAIL_USERNAME']),
+        subject='Welcome to decklyst - Verify your email',
+        sender=('decklyst', app.config['MAIL_USERNAME']),
         recipients=[email]
     )
     msg.body = text_content
@@ -219,7 +219,7 @@ def index():
             slide_img_pairs = list(zip(slides, images))
 
             # Always allow download, watermark for free users is handled in PPTX
-            return render_template('preview.html', slide_img_pairs=slide_img_pairs, watermark=(user_tier=='free'), appname='Decklyst', pptx_filename=filename)
+            return render_template('preview.html', slide_img_pairs=slide_img_pairs, watermark=(user_tier=='free'), appname='decklyst', pptx_filename=filename)
 
         except Exception as e:
             error_message = str(e) if str(e) else "An unexpected error occurred. Please try again later."
@@ -227,7 +227,7 @@ def index():
             logging.error(f"Error processing request: {str(e)}")
             return render_template('index.html'), 500
 
-    return render_template('index.html', appname='Decklyst', user_tier=user_tier)
+    return render_template('index.html', appname='decklyst', user_tier=user_tier)
 
 @app.route('/dashboard')
 def dashboard():
@@ -354,7 +354,7 @@ def paystack_webhook():
             try:
                 # You would integrate with an SMS service here
                 # For example, using Twilio or a local SMS gateway
-                message = f"Your payment of GH₵{data.get('amount')/100:.2f} for Decklyst has been confirmed. Thank you!"
+                message = f"Your payment of GH₵{data.get('amount')/100:.2f} for decklyst has been confirmed. Thank you!"
                 logging.info(f"Would send SMS to {mobile_number}: {message}")
             except Exception as e:
                 logging.error(f"Failed to send SMS: {str(e)}")
