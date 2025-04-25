@@ -5,5 +5,7 @@ requests
 python-dotenv
 gunicorn
 werkzeug
-Flask-Mail
-itsdangerous
+Flask-Dance[sqla]
+blinker
+oauthlib
+requests-oauthlib

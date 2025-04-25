@@ -1,37 +1,54 @@
 from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, g, jsonify
 from flask_mail import Mail, Message
 from utils import generate_slides_content, generate_slide_images, create_pptx
-from models import get_db, init_db, add_user, get_user_by_email, set_user_pro, is_user_pro, verify_email, is_email_verified, get_payment_by_reference, update_payment_status
+from models import get_db, init_db, add_user, get_user_by_email, set_user_pro, is_user_pro, create_user, get_payment_by_reference, update_payment_status
 import os
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 import logging
 import hmac
 import hashlib
 import json
+from functools import wraps
+from flask_dance.contrib.google import make_google_blueprint, google
+from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev')
 
-# Email configuration for Render deployment
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Gmail is more reliable on Render
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')  # Use App Password for Gmail
+# Google OAuth configuration
+app.config['GOOGLE_OAUTH_CLIENT_ID'] = os.getenv('GOOGLE_OAUTH_CLIENT_ID')
+app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET')
+
+google_bp = make_google_blueprint(
+    client_id=app.config['GOOGLE_OAUTH_CLIENT_ID'],
+    client_secret=app.config['GOOGLE_OAUTH_CLIENT_SECRET'],
+    scope=['profile', 'email']
+)
+app.register_blueprint(google_bp, url_prefix='/login')
+
+# Email configuration for Bluehost
+app.config['MAIL_SERVER'] = 'mail.decklyst.com'  # Your Bluehost domain's mail server
+app.config['MAIL_PORT'] = 465  # SSL port
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = True
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')  # full email e.g. noreply@decklyst.com
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')  # Bluehost email password
 app.config['MAIL_DEFAULT_SENDER'] = ('decklyst', os.getenv('MAIL_USERNAME'))
 app.config['MAIL_MAX_EMAILS'] = 10
 app.config['MAIL_ASCII_ATTACHMENTS'] = False
 app.config['MAIL_SUPPRESS_SEND'] = False
 app.config['MAIL_DEBUG'] = True
 
-# Configure logging for email issues
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger('flask.app')
 
 mail = Mail(app)
@@ -49,209 +66,71 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not google.authorized:
+            return redirect(url_for('google.login'))
+        try:
+            resp = google.get('/oauth2/v2/userinfo')
+            assert resp.ok, resp.text
+        except (TokenExpiredError, AssertionError) as e:
+            logger.error(f"OAuth error: {str(e)}")
+            return redirect(url_for('google.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.before_request
 def before_request():
     g.user = None
-    if 'user_email' in session:
-        g.user = session['user_email']
-
-def send_verification_email(email, token):
-    try:
-        verify_url = url_for('verify_email_route', token=token, _external=True)
-        
-        # HTML version of the email
-        html_content = f'''
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .button {{ 
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background-color: #007bff;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    margin: 20px 0;
-                }}
-                .footer {{ font-size: 12px; color: #666; margin-top: 30px; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h2>Welcome to decklyst!</h2>
-                <p>Thank you for signing up. Please verify your email address to get started.</p>
-                <a href="{verify_url}" class="button">Verify Email Address</a>
-                <p>Or copy and paste this link in your browser:</p>
-                <p>{verify_url}</p>
-                <div class="footer">
-                    <p>This link will expire in 24 hours.</p>
-                    <p>If you did not create an account, please ignore this email.</p>
-                    <p> 2025 decklyst. All rights reserved.</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        '''
-        
-        # Plain text version of the email
-        text_content = f'''Welcome to decklyst!
-
-Thank you for signing up. Please verify your email address to get started.
-
-Please click the link below or copy it into your browser:
-{verify_url}
-
-This link will expire in 24 hours.
-
-If you did not create an account, please ignore this email.
-
- 2025 decklyst'''
-
-        msg = Message(
-            subject='Welcome to decklyst - Verify your email',
-            sender=('decklyst', app.config['MAIL_USERNAME']),
-            recipients=[email]
-        )
-        msg.body = text_content
-        msg.html = html_content
-        
-        # Add headers to improve deliverability
-        msg.extra_headers = {
-            'List-Unsubscribe': f'<mailto:{app.config["MAIL_USERNAME"]}?subject=unsubscribe>',
-            'Precedence': 'bulk',
-            'X-Auto-Response-Suppress': 'OOF, AutoReply',
-            'Auto-Submitted': 'auto-generated'
-        }
-        
-        mail.send(msg)
-        logger.info(f'Verification email sent successfully to {email}')
-        return True
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f'Failed to send verification email: {error_msg}')
-        # Log additional connection details for debugging
-        logger.error(f'SMTP Settings: Server={app.config["MAIL_SERVER"]}, Port={app.config["MAIL_PORT"]}, '
-                    f'TLS={app.config["MAIL_USE_TLS"]}, SSL={app.config["MAIL_USE_SSL"]}')
-        return False
-
-@app.route('/verify/<token>')
-def verify_email_route(token):
-    if verify_email(token):
-        flash('Email verified successfully! You can now log in.', 'success')
-    else:
-        flash('Invalid or expired verification link.', 'error')
-    return redirect(url_for('login'))
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        
-        if get_user_by_email(email):
-            flash('Email already registered.', 'danger')
-            return render_template('register.html')
-            
+    if google.authorized:
         try:
-            verification_token = add_user(email, password)
-            if not send_verification_email(email, verification_token):
-                flash('Failed to send verification email. Please try again later.', 'error')
-                return render_template('register.html')
-            flash('Registration successful! Please check your email to verify your account.', 'success')
-            return redirect(url_for('login'))
-        except Exception as e:
-            flash('An error occurred. Please try again.', 'error')
-            return render_template('register.html')
-            
-    return render_template('register.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        user = get_user_by_email(email)
-        
-        if user and check_password_hash(user[2], password):
-            if not is_email_verified(email):
-                flash('Please verify your email before logging in.', 'error')
-                return render_template('login.html')
+            resp = google.get('/oauth2/v2/userinfo')
+            if resp.ok:
+                user_info = resp.json()
+                email = user_info['email']
+                g.user = email
                 
-            session['user_email'] = email
-            session['paid_user'] = bool(user[3])
-            flash('Logged in successfully.', 'success')
-            return redirect(url_for('index'))
-            
-        flash('Invalid email or password', 'error')
-    return render_template('login.html')
+                # Create user if they don't exist
+                if not get_user_by_email(email):
+                    create_user(
+                        email=email,
+                        password=generate_password_hash('not-used'),  # Password not used with OAuth
+                        verified=True  # Auto-verified through Google
+                    )
+        except Exception as e:
+            logger.error(f"Error getting user info: {str(e)}")
+
+@app.route('/login')
+def login():
+    if not google.authorized:
+        return redirect(url_for('google.login'))
+    return redirect(url_for('dashboard'))
 
 @app.route('/logout')
 def logout():
-    session.pop('user_email', None)
-    session.pop('paid_user', None)
-    flash('Logged out.', 'info')
-    return redirect(url_for('login'))
+    session.clear()
+    return redirect(url_for('index'))
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def index():
     user_tier = 'free'
-    if g.user and is_user_pro(g.user):
-        user_tier = 'paid'
-    if request.method == 'POST':
-        try:
-            topic = request.form.get('topic', '')
-            num_slides = int(request.form.get('num_slides', 3))
-            color_theme = request.form.get('color_theme', 'blue')
-            user_tier = request.form.get('user_tier', 'free')
-
-            if not topic:
-                flash('Please enter a topic', 'error')
-                return render_template('index.html')
-
-            if user_tier == 'free' and num_slides > 3:
-                flash('Upgrade to Pro for more than 3 slides!', 'warning')
-                return redirect(url_for('pay'))
-            if user_tier == 'paid' and num_slides > 30:
-                flash('Paid users can generate up to 30 slides only.')
-                return redirect(url_for('index'))
-
-            slides = generate_slides_content(topic, num_slides)
-            images = generate_slide_images(slides, user_tier)
-            
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            filename = f"decklyst_{timestamp}.pptx"
-            output_path = os.path.join('static/presentations', filename)
-            create_pptx(slides, images, color_theme, output_path, user_tier)
-            
-            slide_img_pairs = list(zip(slides, images))
-
-            # Always allow download, watermark for free users is handled in PPTX
-            return render_template('preview.html', slide_img_pairs=slide_img_pairs, watermark=(user_tier=='free'), appname='decklyst', pptx_filename=filename)
-
-        except Exception as e:
-            error_message = str(e) if str(e) else "An unexpected error occurred. Please try again later."
-            flash(error_message, 'error')
-            logging.error(f"Error processing request: {str(e)}")
-            return render_template('index.html'), 500
-
+    if g.user:
+        user = get_user_by_email(g.user)
+        if user:
+            user_tier = user['tier']
     return render_template('index.html', appname='decklyst', user_tier=user_tier)
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
-    if not g.user:
-        flash('Please log in to access your dashboard.', 'warning')
-        return redirect(url_for('login'))
     email = g.user
     is_pro = is_user_pro(email)
     return render_template('dashboard.html', email=email, is_pro=is_pro)
 
 @app.route('/pay')
+@login_required
 def pay():
-    if not g.user:
-        return redirect(url_for('login'))
-        
     try:
         return render_template('pay.html',
             user_email=g.user,
@@ -402,6 +281,18 @@ def check_payment_status(reference):
 @app.route('/static/presentations/<filename>')
 def download_presentation(filename):
     return send_from_directory('static/presentations', filename, as_attachment=True)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    return redirect(url_for('login'))
+
+@app.route('/verify/<token>')
+def verify_email_route(token):
+    return redirect(url_for('login'))
+
+@app.route('/send_verification_email')
+def send_verification_email():
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)

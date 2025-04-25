@@ -1,10 +1,11 @@
 import sqlite3
 from flask import g
-from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from itsdangerous import URLSafeTimedSerializer
+import logging
 
 DATABASE = 'users.db'
+logger = logging.getLogger(__name__)
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -15,104 +16,52 @@ def get_db():
 
 def init_db():
     db = get_db()
-    cursor = db.cursor()
-    
-    # Users table with subscription info and email verification
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            is_pro INTEGER DEFAULT 0,
-            subscription_active INTEGER DEFAULT 0,
-            subscription_end_date TIMESTAMP,
-            single_credits INTEGER DEFAULT 0,
-            email_verified INTEGER DEFAULT 0,
-            verification_token TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Payment history table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            payment_type TEXT NOT NULL,
-            reference TEXT UNIQUE NOT NULL,
-            status TEXT NOT NULL,
-            channel TEXT,
-            mobile_number TEXT,
-            transaction_data TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-    
-    db.commit()
+    with open('schema.sql', 'r') as f:
+        db.executescript(f.read())
 
-def add_user(email, password):
+def create_user(email, password, verified=True):
     db = get_db()
-    cursor = db.cursor()
-    password_hash = generate_password_hash(password)
-    
-    # Generate verification token
-    s = URLSafeTimedSerializer('your-secret-key')  # Use app.config['SECRET_KEY'] in production
-    verification_token = s.dumps(email, salt='email-verify')
-    
-    cursor.execute('''
-        INSERT INTO users (email, password_hash, verification_token) 
-        VALUES (?, ?, ?)
-    ''', (email, password_hash, verification_token))
-    db.commit()
-    return verification_token
-
-def verify_email(token):
-    s = URLSafeTimedSerializer('your-secret-key')  # Use app.config['SECRET_KEY'] in production
     try:
-        email = s.loads(token, salt='email-verify', max_age=86400)  # Token valid for 24 hours
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute('''
-            UPDATE users 
-            SET email_verified = 1, verification_token = NULL 
-            WHERE email = ? AND verification_token = ?
-        ''', (email, token))
+        db.execute(
+            'INSERT INTO users (email, password, verified, tier) VALUES (?, ?, ?, ?)',
+            (email, password, verified, 'free')
+        )
         db.commit()
         return True
-    except:
+    except Exception as e:
+        logger.error(f"Error creating user: {str(e)}")
         return False
 
 def get_user_by_email(email):
     db = get_db()
-    cursor = db.cursor()
-    cursor.execute('SELECT * FROM users WHERE email=?', (email,))
-    return cursor.fetchone()
+    user = db.execute(
+        'SELECT * FROM users WHERE email = ?', (email,)
+    ).fetchone()
+    if user:
+        return {
+            'email': user[1],
+            'password': user[2],
+            'verified': user[3],
+            'tier': user[4]
+        }
+    return None
 
-def is_email_verified(email):
+def is_user_pro(email):
     user = get_user_by_email(email)
-    return user and user['email_verified'] == 1
+    return user and user['tier'] == 'paid'
 
-def set_user_pro(email, subscription=False):
+def set_user_pro(email):
     db = get_db()
-    cursor = db.cursor()
-    
-    if subscription:
-        # Set subscription end date to 30 days from now
-        sub_end = datetime.now() + timedelta(days=30)
-        cursor.execute('''
-            UPDATE users 
-            SET is_pro=1, 
-                subscription_active=1, 
-                subscription_end_date=? 
-            WHERE email=?
-        ''', (sub_end, email))
-    else:
-        # Just update is_pro status
-        cursor.execute('UPDATE users SET is_pro=1 WHERE email=?', (email,))
-    
-    db.commit()
+    try:
+        db.execute(
+            'UPDATE users SET tier = ? WHERE email = ?',
+            ('paid', email)
+        )
+        db.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error upgrading user: {str(e)}")
+        return False
 
 def add_presentation_credit(email, credits=1):
     db = get_db()
@@ -141,23 +90,6 @@ def use_presentation_credit(email):
     db.commit()
     return True
 
-def is_user_pro(email):
-    user = get_user_by_email(email)
-    if not user:
-        return False
-        
-    # Check if user has an active subscription
-    if user['subscription_active'] and user['subscription_end_date']:
-        end_date = datetime.strptime(user['subscription_end_date'], '%Y-%m-%d %H:%M:%S')
-        if end_date > datetime.now():
-            return True
-            
-    # Check if user has single presentation credits
-    if user['single_credits'] > 0:
-        return True
-        
-    return False
-
 def record_payment(email, amount, payment_type, reference, status='success'):
     db = get_db()
     cursor = db.cursor()
@@ -174,17 +106,6 @@ def record_payment(email, amount, payment_type, reference, status='success'):
     ''', (user['id'], amount, payment_type, reference, status))
     db.commit()
     return True
-
-def cancel_subscription(email):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute('''
-        UPDATE users 
-        SET subscription_active=0,
-            subscription_end_date=NULL
-        WHERE email=?
-    ''', (email,))
-    db.commit()
 
 def create_payment(user_id, amount, payment_type, reference, status, channel=None, mobile_number=None):
     db = get_db()
@@ -222,9 +143,7 @@ def update_payment_status(reference, status, transaction_data=None):
             if payment['payment_type'] == 'subscription':
                 cursor.execute('''
                     UPDATE users 
-                    SET is_pro = 1,
-                        subscription_active = 1,
-                        subscription_end_date = datetime('now', '+30 days')
+                    SET tier = 'paid'
                     WHERE id = ?
                 ''', (payment['user_id'],))
             else:
