@@ -171,12 +171,19 @@ def dashboard():
 @app.route('/pay')
 def pay():
     if not g.user:
-        flash('Please log in to access premium features.', 'warning')
         return redirect(url_for('login'))
+        
+    # Get Paystack public key from environment
+    paystack_public_key = os.getenv('PAYSTACK_PUBLIC_KEY')
+    
+    # Monthly subscription plan code from Paystack
+    monthly_plan_code = os.getenv('PAYSTACK_MONTHLY_PLAN')
+    
     return render_template('pay.html', 
-                         paystack_public_key=os.getenv('PAYSTACK_PUBLIC_KEY'),
-                         monthly_plan_code=os.getenv('PAYSTACK_MONTHLY_PLAN'),
-                         user_email=g.user)
+        user_email=g.user['email'],
+        paystack_public_key=paystack_public_key,
+        monthly_plan_code=monthly_plan_code
+    )
 
 @app.route('/payment/verify')
 def payment_verify():
