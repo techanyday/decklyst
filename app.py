@@ -48,9 +48,7 @@ def create_app():
             'https://www.googleapis.com/auth/userinfo.email',
             'https://www.googleapis.com/auth/userinfo.profile'
         ],
-        redirect_url='/login/google/authorized',
-        session_class=Session,
-        storage=Session
+        redirect_url='/login/google/authorized'
     )
     app.register_blueprint(blueprint, url_prefix='/login')
 
