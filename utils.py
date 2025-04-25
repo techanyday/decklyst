@@ -91,7 +91,8 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
     MARGIN = 0.5
     TITLE_HEIGHT = 0.8
     TITLE_TOP = MARGIN
-    IMAGE_HEIGHT = 3.5
+    MAX_IMAGE_HEIGHT = 3.5
+    MIN_IMAGE_HEIGHT = 2.5
     BULLET_SPACING = 0.25
     
     for i, slide_data in enumerate(slides):
@@ -126,6 +127,14 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
         content_top = TITLE_TOP + TITLE_HEIGHT
         content_height = SLIDE_HEIGHT - content_top - MARGIN
         
+        # Dynamically adjust image height based on number of bullets
+        num_bullets = len(slide_data['bullets'])
+        if num_bullets <= 3:
+            image_height = MAX_IMAGE_HEIGHT
+        else:
+            # Reduce image height as bullet points increase
+            image_height = max(MIN_IMAGE_HEIGHT, MAX_IMAGE_HEIGHT - (num_bullets - 3) * 0.2)
+        
         # Image placement - centered below title
         image_top = content_top + 0.2  # Small gap after title
         if images and len(images) > i and images[i]:
@@ -136,12 +145,12 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
                     Inches(MARGIN),
                     Inches(image_top),
                     Inches(SLIDE_WIDTH - 2*MARGIN),
-                    Inches(IMAGE_HEIGHT)
+                    Inches(image_height)
                 )
                 
                 # Maintain aspect ratio
                 aspect_ratio = img_shape.height / img_shape.width
-                new_width = min(SLIDE_WIDTH - 2*MARGIN, IMAGE_HEIGHT / aspect_ratio)
+                new_width = min(SLIDE_WIDTH - 2*MARGIN, image_height / aspect_ratio)
                 new_height = new_width * aspect_ratio
                 
                 # Center image horizontally
@@ -160,7 +169,6 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
         # Bullet points placement - below image
         bullets_top = image_top + actual_image_height + 0.3
         remaining_height = SLIDE_HEIGHT - bullets_top - MARGIN
-        bullet_height = remaining_height / (len(slide_data['bullets']) + 1)  # +1 for spacing
         
         bullet_box = slide.shapes.add_textbox(
             Inches(MARGIN),
@@ -171,13 +179,16 @@ def create_pptx(slides, images, color_theme, output_path, user_tier):
         bullet_frame = bullet_box.text_frame
         bullet_frame.word_wrap = True
         
+        # Dynamically adjust font size based on number of bullets
+        bullet_font_size = 20 if num_bullets <= 5 else max(16, int(20 - (num_bullets - 5)))
+        
         for idx, bullet in enumerate(slide_data['bullets']):
             p = bullet_frame.add_paragraph()
             p.text = bullet
-            p.font.size = Pt(20)
+            p.font.size = Pt(bullet_font_size)
             p.level = 0
-            p.space_before = Pt(6)
-            p.space_after = Pt(6)
+            p.space_before = Pt(4)  # Reduced spacing
+            p.space_after = Pt(4)   # Reduced spacing
             
             # Adjust alignment based on number of bullets
             if len(slide_data['bullets']) <= 3:
