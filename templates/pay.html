@@ -8,23 +8,45 @@
     <style>
         .payment-method {
             margin-top: 15px;
-            padding: 10px;
+            padding: 15px;
             border: 1px solid #dee2e6;
-            border-radius: 4px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
         }
-        .payment-method img {
-            height: 24px;
-            margin-right: 10px;
+        .payment-method h5 {
+            color: #495057;
+            margin-bottom: 15px;
         }
         .payment-icons {
             display: flex;
-            gap: 10px;
+            gap: 15px;
             margin-top: 10px;
             align-items: center;
+            justify-content: center;
         }
         .payment-icons img {
-            height: 30px;
+            height: 48px;
+            width: 48px;
             object-fit: contain;
+            transition: transform 0.2s;
+        }
+        .payment-icons img:hover {
+            transform: scale(1.1);
+        }
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .btn {
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
     </style>
 </head>
@@ -71,12 +93,12 @@
 
             <!-- Payment methods info -->
             <div class="payment-method">
-                <h5 class="mb-2">Accepted Payment Methods</h5>
+                <h5 class="text-center mb-3">Accepted Payment Methods</h5>
                 <div class="payment-icons">
-                    <img src="https://cdn.paystack.com/images/payment-methods/mtn.png" alt="MTN Mobile Money" title="MTN Mobile Money">
-                    <img src="https://cdn.paystack.com/images/payment-methods/vodafone.png" alt="Vodafone Cash" title="Vodafone Cash">
-                    <img src="https://cdn.paystack.com/images/payment-methods/tigo.png" alt="AirtelTigo Money" title="AirtelTigo Money">
-                    <img src="https://cdn.paystack.com/images/payment-methods/card.png" alt="Card Payments" title="Card Payments">
+                    <img src="{{ url_for('static', filename='images/payment-methods/mtn.svg') }}" alt="MTN Mobile Money" title="MTN Mobile Money">
+                    <img src="{{ url_for('static', filename='images/payment-methods/vodafone.svg') }}" alt="Vodafone Cash" title="Vodafone Cash">
+                    <img src="{{ url_for('static', filename='images/payment-methods/airteltigo.svg') }}" alt="AirtelTigo Money" title="AirtelTigo Money">
+                    <img src="{{ url_for('static', filename='images/payment-methods/card.svg') }}" alt="Card Payments" title="Card Payments">
                 </div>
             </div>
         </div>
