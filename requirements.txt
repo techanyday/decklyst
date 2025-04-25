@@ -10,3 +10,4 @@ blinker
 oauthlib
 requests-oauthlib
 flask-talisman
+Flask-Session

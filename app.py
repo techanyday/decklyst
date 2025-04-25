@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from models import init_db, create_user, get_user_by_email, is_user_pro, set_user_pro
 from flask_dance.contrib.google import make_google_blueprint, google
 import logging
+from datetime import timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -12,11 +13,19 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev')
 
+# Session configuration
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 # Google OAuth configuration
 app.config['GOOGLE_OAUTH_CLIENT_ID'] = os.getenv('GOOGLE_OAUTH_CLIENT_ID')
 app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET')
 app.config['OAUTHLIB_INSECURE_TRANSPORT'] = os.getenv('FLASK_ENV') != 'production'
-app.config['OAUTHLIB_RELAX_TOKEN_SCOPE'] = True  # Allow for scope changes
+app.config['OAUTHLIB_RELAX_TOKEN_SCOPE'] = True
+app.config['OAUTHLIB_PRESERVE_CSRF_TOKEN'] = True
 
 google_bp = make_google_blueprint(
     client_id=app.config['GOOGLE_OAUTH_CLIENT_ID'],
@@ -27,8 +36,8 @@ google_bp = make_google_blueprint(
         'https://www.googleapis.com/auth/userinfo.profile'
     ],
     redirect_url='/login/google/authorized',
-    reprompt_consent=True,
-    offline=True
+    session_class=session,
+    storage=session
 )
 app.register_blueprint(google_bp, url_prefix='/login')
 
@@ -39,7 +48,7 @@ with app.app_context():
 @app.route('/')
 def index():
     if not google.authorized:
-        return redirect(url_for('google.login'))
+        return redirect(url_for('login'))
     try:
         resp = google.get('/oauth2/v2/userinfo')
         assert resp.ok, resp.text
@@ -56,13 +65,25 @@ def index():
 
 @app.route('/login')
 def login():
+    # Clear any existing session data
+    session.clear()
     if google.authorized:
         return redirect(url_for('index'))
     return render_template('login.html')
 
 @app.route('/logout')
 def logout():
-    session.pop('user_email', None)
+    # Clear token and user data
+    token = google_bp.token
+    if token:
+        resp = google.post(
+            'https://accounts.google.com/o/oauth2/revoke',
+            params={'token': token['access_token']},
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        )
+        
+    # Clear session
+    session.clear()
     return redirect(url_for('login'))
 
 @app.route('/dashboard')
