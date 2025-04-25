@@ -173,17 +173,16 @@ def pay():
     if not g.user:
         return redirect(url_for('login'))
         
-    # Get Paystack public key from environment
-    paystack_public_key = os.getenv('PAYSTACK_PUBLIC_KEY')
-    
-    # Monthly subscription plan code from Paystack
-    monthly_plan_code = os.getenv('PAYSTACK_MONTHLY_PLAN')
-    
-    return render_template('pay.html', 
-        user_email=g.user['email'],
-        paystack_public_key=paystack_public_key,
-        monthly_plan_code=monthly_plan_code
-    )
+    try:
+        return render_template('pay.html',
+            user_email=g.user,
+            public_key=os.getenv('PAYSTACK_PUBLIC_KEY'),
+            monthly_plan=os.getenv('PAYSTACK_MONTHLY_PLAN')
+        )
+    except Exception as e:
+        logging.error(f"Error in pay route: {str(e)}")
+        flash('An error occurred. Please try again.', 'error')
+        return redirect(url_for('index'))
 
 @app.route('/payment/verify')
 def payment_verify():
