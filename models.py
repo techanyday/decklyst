@@ -2,6 +2,7 @@ import sqlite3
 from flask import g
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+from itsdangerous import URLSafeTimedSerializer
 
 DATABASE = 'users.db'
 
@@ -9,14 +10,14 @@ def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row  # This allows accessing columns by name
+        db.row_factory = sqlite3.Row
     return db
 
 def init_db():
     db = get_db()
     cursor = db.cursor()
     
-    # Users table with subscription info
+    # Users table with subscription info and email verification
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,6 +27,8 @@ def init_db():
             subscription_active INTEGER DEFAULT 0,
             subscription_end_date TIMESTAMP,
             single_credits INTEGER DEFAULT 0,
+            email_verified INTEGER DEFAULT 0,
+            verification_token TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -50,14 +53,43 @@ def add_user(email, password):
     db = get_db()
     cursor = db.cursor()
     password_hash = generate_password_hash(password)
-    cursor.execute('INSERT INTO users (email, password_hash) VALUES (?, ?)', (email, password_hash))
+    
+    # Generate verification token
+    s = URLSafeTimedSerializer('your-secret-key')  # Use app.config['SECRET_KEY'] in production
+    verification_token = s.dumps(email, salt='email-verify')
+    
+    cursor.execute('''
+        INSERT INTO users (email, password_hash, verification_token) 
+        VALUES (?, ?, ?)
+    ''', (email, password_hash, verification_token))
     db.commit()
+    return verification_token
+
+def verify_email(token):
+    s = URLSafeTimedSerializer('your-secret-key')  # Use app.config['SECRET_KEY'] in production
+    try:
+        email = s.loads(token, salt='email-verify', max_age=86400)  # Token valid for 24 hours
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('''
+            UPDATE users 
+            SET email_verified = 1, verification_token = NULL 
+            WHERE email = ? AND verification_token = ?
+        ''', (email, token))
+        db.commit()
+        return True
+    except:
+        return False
 
 def get_user_by_email(email):
     db = get_db()
     cursor = db.cursor()
     cursor.execute('SELECT * FROM users WHERE email=?', (email,))
     return cursor.fetchone()
+
+def is_email_verified(email):
+    user = get_user_by_email(email)
+    return user and user['email_verified'] == 1
 
 def set_user_pro(email, subscription=False):
     db = get_db()

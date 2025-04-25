@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, g
+from flask_mail import Mail, Message
 from utils import generate_slides_content, generate_slide_images, create_pptx
-from models import get_db, init_db, add_user, get_user_by_email, set_user_pro, is_user_pro
+from models import get_db, init_db, add_user, get_user_by_email, set_user_pro, is_user_pro, verify_email, is_email_verified
 import os
 from datetime import datetime
 from dotenv import load_dotenv
@@ -11,9 +12,17 @@ import logging
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY')
-if not app.secret_key:
-    raise ValueError("No SECRET_KEY set in environment variables")
+app.secret_key = os.getenv('SECRET_KEY', 'dev')
+
+# Email configuration
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
+
+mail = Mail(app)
 
 # Ensure presentations directory exists
 os.makedirs('static/presentations', exist_ok=True)
@@ -22,29 +31,58 @@ os.makedirs('static/presentations', exist_ok=True)
 with app.app_context():
     init_db()
 
-@app.before_request
-def before_request():
-    g.user = None
-    if 'user_email' in session:
-        g.user = session['user_email']
-
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
 
+@app.before_request
+def before_request():
+    g.user = None
+    if 'user_email' in session:
+        g.user = session['user_email']
+
+def send_verification_email(email, token):
+    verify_url = url_for('verify_email_route', token=token, _external=True)
+    msg = Message('Verify your email',
+                 recipients=[email])
+    msg.body = f'''Please click the link below to verify your email address:
+{verify_url}
+
+This link will expire in 24 hours.
+
+If you did not create an account, please ignore this email.
+'''
+    mail.send(msg)
+
+@app.route('/verify/<token>')
+def verify_email_route(token):
+    if verify_email(token):
+        flash('Email verified successfully! You can now log in.', 'success')
+    else:
+        flash('Invalid or expired verification link.', 'error')
+    return redirect(url_for('login'))
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
+        
         if get_user_by_email(email):
             flash('Email already registered.', 'danger')
             return render_template('register.html')
-        add_user(email, password)
-        flash('Registration successful! Please log in.', 'success')
-        return redirect(url_for('login'))
+            
+        try:
+            verification_token = add_user(email, password)
+            send_verification_email(email, verification_token)
+            flash('Registration successful! Please check your email to verify your account.', 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            flash('An error occurred. Please try again.', 'error')
+            return render_template('register.html')
+            
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -53,12 +91,18 @@ def login():
         email = request.form['email']
         password = request.form['password']
         user = get_user_by_email(email)
+        
         if user and check_password_hash(user[2], password):
+            if not is_email_verified(email):
+                flash('Please verify your email before logging in.', 'error')
+                return render_template('login.html')
+                
             session['user_email'] = email
             session['paid_user'] = bool(user[3])
             flash('Logged in successfully.', 'success')
             return redirect(url_for('index'))
-        flash('Invalid credentials.', 'danger')
+            
+        flash('Invalid email or password', 'error')
     return render_template('login.html')
 
 @app.route('/logout')
