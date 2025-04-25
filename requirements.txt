@@ -9,3 +9,4 @@ Flask-Dance[sqla]
 blinker
 oauthlib
 requests-oauthlib
+flask-talisman

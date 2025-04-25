@@ -27,7 +27,9 @@ app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET
 google_bp = make_google_blueprint(
     client_id=app.config['GOOGLE_OAUTH_CLIENT_ID'],
     client_secret=app.config['GOOGLE_OAUTH_CLIENT_SECRET'],
-    scope=['profile', 'email']
+    scope=['profile', 'email'],
+    redirect_url='/login/google/authorized',  # Match the URI in Google Console
+    reprompt_consent=True
 )
 app.register_blueprint(google_bp, url_prefix='/login')
 
@@ -293,6 +295,10 @@ def verify_email_route(token):
 @app.route('/send_verification_email')
 def send_verification_email():
     return redirect(url_for('login'))
+
+if os.getenv('FLASK_ENV') == 'production':
+    from flask_talisman import Talisman
+    Talisman(app, force_https=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
