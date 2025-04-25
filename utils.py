@@ -3,8 +3,8 @@ import openai
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_SHAPE, MSO_AUTO_SIZE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.text import PP_ALIGN, MSO_AUTO_SIZE
 from dotenv import load_dotenv
 import requests
 from io import BytesIO
