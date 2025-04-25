@@ -15,13 +15,20 @@ app.secret_key = os.getenv('SECRET_KEY', 'dev')
 # Google OAuth configuration
 app.config['GOOGLE_OAUTH_CLIENT_ID'] = os.getenv('GOOGLE_OAUTH_CLIENT_ID')
 app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET')
+app.config['OAUTHLIB_INSECURE_TRANSPORT'] = os.getenv('FLASK_ENV') != 'production'
+app.config['OAUTHLIB_RELAX_TOKEN_SCOPE'] = True  # Allow for scope changes
 
 google_bp = make_google_blueprint(
     client_id=app.config['GOOGLE_OAUTH_CLIENT_ID'],
     client_secret=app.config['GOOGLE_OAUTH_CLIENT_SECRET'],
-    scope=['profile', 'email'],
+    scope=[
+        'openid',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile'
+    ],
     redirect_url='/login/google/authorized',
-    reprompt_consent=True
+    reprompt_consent=True,
+    offline=True
 )
 app.register_blueprint(google_bp, url_prefix='/login')
 
