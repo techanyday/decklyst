@@ -58,7 +58,7 @@ def create_app():
     @app.route('/')
     def index():
         if not google.authorized:
-            return redirect(url_for('google.login'))
+            return render_template('login.html')
         try:
             resp = google.get('/oauth2/v2/userinfo')
             assert resp.ok, resp.text
@@ -71,7 +71,7 @@ def create_app():
         except Exception as e:
             logger.error(f"Error in OAuth flow: {str(e)}")
             flash('Authentication failed. Please try again.', 'error')
-            return redirect(url_for('google.login'))
+            return render_template('login.html')
 
     @app.route('/login')
     def login():
