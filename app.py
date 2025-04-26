@@ -12,14 +12,10 @@ import json
 from flask_session import Session
 from flask import jsonify
 from flask import send_from_directory
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import current_user
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-db = SQLAlchemy()
 
 def create_app():
     app = Flask(__name__)
@@ -38,15 +34,10 @@ def create_app():
         OAUTHLIB_INSECURE_TRANSPORT=os.getenv('FLASK_ENV') != 'production',
         OAUTHLIB_RELAX_TOKEN_SCOPE=True,
         OAUTHLIB_PRESERVE_CSRF_TOKEN=True,
-        SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', 'sqlite:///app.db'),
-        SQLALCHEMY_TRACK_MODIFICATIONS=False
     )
 
     # Initialize Flask-Session
     Session(app)
-
-    # Initialize Flask-SQLAlchemy
-    db.init_app(app)
 
     # Create and register Google OAuth blueprint
     blueprint = make_google_blueprint(
@@ -284,9 +275,7 @@ def create_app():
 
 def init_application():
     app = create_app()
-    with app.app_context():
-        db.create_all()
-        init_db()
+    init_db()
     return app
 
 app = init_application()
