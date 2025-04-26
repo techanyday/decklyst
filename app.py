@@ -39,6 +39,10 @@ def create_app():
     # Initialize Flask-Session
     Session(app)
 
+    # Initialize database
+    with app.app_context():
+        init_db()
+
     # Create and register Google OAuth blueprint
     blueprint = make_google_blueprint(
         client_id=app.config['GOOGLE_OAUTH_CLIENT_ID'],
@@ -275,10 +279,9 @@ def create_app():
 
 def init_application():
     app = create_app()
-    init_db()
     return app
 
-app = init_application()
+app = create_app()
 
 if __name__ == '__main__':
     app.run(debug=True)
