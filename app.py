@@ -56,13 +56,7 @@ def create_app():
             'openid',
             'https://www.googleapis.com/auth/userinfo.email',
             'https://www.googleapis.com/auth/userinfo.profile'
-        ],
-        redirect_to='index',
-        redirect_url=None,
-        login_url='/login/google',
-        authorized_url='/login/google/authorized',
-        storage=db.session,
-        user=current_user
+        ]
     )
     app.register_blueprint(blueprint, url_prefix='/login')
 
