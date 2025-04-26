@@ -57,28 +57,14 @@ def create_app():
 
     @app.route('/')
     def index():
-        if not google.authorized:
-            return redirect(url_for('google.login'))
-        try:
-            resp = google.get('/oauth2/v2/userinfo')
-            assert resp.ok, resp.text
-            email = resp.json()['email']
-            session['user_email'] = email
-            user = get_user_by_email(email)
-            if not user:
-                create_user(email, '')  # Password not needed for OAuth
-            return redirect(url_for('dashboard'))
-        except Exception as e:
-            logger.error(f"Error in OAuth flow: {str(e)}")
-            flash('Authentication failed. Please try again.', 'error')
-            return redirect(url_for('google.login'))
+        return render_template('index.html')
 
     @app.route('/login')
     def login():
         # Clear any existing session data
         session.clear()
         if google.authorized:
-            return redirect(url_for('index'))
+            return redirect(url_for('dashboard'))
         return render_template('login.html')
 
     @app.route('/logout')
